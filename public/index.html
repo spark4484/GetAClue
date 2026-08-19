@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get A Clue</title>
+<style>
+  :root {
+    --bg: #16121c;
+    --panel: #221b2d;
+    --panel-2: #2b2238;
+    --edge: #3d3150;
+    --ink: #e8e0f0;
+    --muted: #9c8fb3;
+    --gold: #d4af5a;
+    --gold-dim: #8a7440;
+    --danger: #c9564f;
+    --ok: #6fae6a;
+    --sapphire: #4a7fd4;
+    --custard: #e0c34e;
+    --pewter: #9aa2ad;
+    --vermilion: #d95f45;
+    --damson: #9161c4;
+    --celadon: #74b596;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(ellipse at 50% -10%, #241c31 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.4;
+  }
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--panel-2);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 9px 16px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--gold-dim); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: linear-gradient(180deg, #6b552a, #52411f); border-color: var(--gold-dim); color: #f5e8c8; }
+  button.danger { border-color: #6e3531; color: #eaa49f; }
+  input, select {
+    font-family: inherit;
+    font-size: 16px;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 9px 12px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--gold-dim); }
+  h1, h2, h3 { font-weight: normal; letter-spacing: 0.04em; }
+
+  .screen { display: none; }
+  .screen.visible { display: block; }
+
+  /* ---- Home / lobby ---- */
+  #home, #lobby {
+    max-width: 460px;
+    margin: 0 auto;
+    padding: 48px 20px;
+    text-align: center;
+  }
+  .masthead { font-size: 44px; margin: 10px 0 2px; color: var(--gold); text-shadow: 0 2px 12px rgba(212,175,90,0.25); }
+  .tagline { color: var(--muted); font-style: italic; margin: 0 0 34px; }
+  .card-box {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 18px;
+    text-align: left;
+  }
+  .card-box h3 { margin: 0 0 12px; color: var(--gold); font-size: 17px; }
+  .row { display: flex; gap: 10px; margin-top: 10px; }
+  .row input { flex: 1; min-width: 0; }
+  #home input#name { width: 100%; }
+  .code-big {
+    font-size: 42px;
+    letter-spacing: 0.35em;
+    text-indent: 0.35em;
+    color: var(--gold);
+    background: var(--bg);
+    border: 1px dashed var(--gold-dim);
+    border-radius: 12px;
+    padding: 12px 0;
+    margin: 14px 0;
+  }
+  .roster { list-style: none; padding: 0; margin: 14px 0; text-align: left; }
+  .roster li { padding: 8px 12px; border-bottom: 1px solid var(--edge); }
+  .roster li:last-child { border-bottom: none; }
+  .hint { color: var(--muted); font-size: 14px; }
+
+  /* ---- Game layout ---- */
+  #game { padding: 12px; max-width: 1280px; margin: 0 auto; }
+  #topbar {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px;
+    padding: 4px 6px 10px;
+  }
+  #topbar .masthead { font-size: 24px; margin: 0; }
+  #status { font-size: 16px; }
+  #status .who { color: var(--gold); }
+  #codechip { color: var(--muted); font-size: 14px; margin-left: auto; }
+  #codechip b { color: var(--ink); letter-spacing: 0.15em; }
+
+  #cols { display: grid; grid-template-columns: minmax(340px, 1.25fr) minmax(300px, 1fr); gap: 14px; }
+  @media (max-width: 860px) { #cols { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 14px;
+  }
+  .panel h3 { margin: 0 0 10px; font-size: 15px; color: var(--gold); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* Mansion map */
+  #map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .room {
+    position: relative;
+    min-height: 92px;
+    background: var(--panel-2);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    padding: 8px 9px 26px;
+    font-size: 14px;
+  }
+  .room .rname { color: var(--ink); }
+  .room.reach { border-color: var(--gold); cursor: pointer; box-shadow: 0 0 0 1px var(--gold) inset; }
+  .room.reach:hover { background: #35294a; }
+  .room.here { border-color: var(--gold-dim); background: #2e2540; }
+  .room .passage { position: absolute; right: 7px; top: 6px; font-size: 12px; opacity: 0.8; }
+  .tokens { position: absolute; left: 7px; bottom: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+  .token {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-family: Verdana, sans-serif; color: #14101a;
+    border: 1px solid rgba(0,0,0,0.4);
+  }
+  .token.gone { opacity: 0.35; }
+
+  /* Actions */
+  #actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; min-height: 40px; align-items: center; }
+  #phasehint { width: 100%; color: var(--muted); font-size: 14px; font-style: italic; }
+
+  /* Hand */
+  .cards { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pcard {
+    background: linear-gradient(180deg, #f3ead6, #e4d7bb);
+    color: #38301f;
+    border-radius: 7px;
+    border: 1px solid #b7a67f;
+    padding: 6px 10px;
+    font-size: 13.5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .pcard.small { font-size: 12.5px; padding: 4px 8px; background: #d9cdb2; }
+
+  /* Notebook */
+  #notebook table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #notebook td { padding: 3px 6px; border-bottom: 1px solid #2e2540; }
+  #notebook tr.section td { color: var(--gold); text-transform: uppercase; font-size: 12px; letter-spacing: 0.1em; padding-top: 9px; }
+  #notebook td.mark { width: 46px; text-align: center; cursor: pointer; user-select: none; font-family: Verdana, sans-serif; font-size: 12.5px; }
+  #notebook td.mark.auto { cursor: default; color: var(--ok); }
+  #notebook td.mark .man { color: var(--vermilion); }
+  #notebook tr.known td:first-child { color: var(--muted); text-decoration: line-through; }
+
+  /* Log & chat */
+  #log {
+    height: 200px; overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--edge); border-radius: 8px;
+    padding: 8px 10px; font-size: 13.5px;
+  }
+  #log p { margin: 0 0 5px; }
+  #log p.mine { color: #cbe3ff; }
+  #chatrow { display: flex; gap: 8px; margin-top: 8px; }
+  #chatrow input { flex: 1; min-width: 0; font-size: 14px; }
+
+  /* Players strip */
+  #plist { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  #plist li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  #plist .token { flex: none; }
+  #plist .dim { color: var(--muted); }
+  #plist li.turn .pname { color: var(--gold); }
+
+  /* Modal */
+  #overlay {
+    position: fixed; inset: 0; background: rgba(10,7,15,0.75);
+    display: none; align-items: center; justify-content: center; padding: 20px; z-index: 50;
+  }
+  #overlay.visible { display: flex; }
+  #modal {
+    background: var(--panel); border: 1px solid var(--gold-dim); border-radius: 14px;
+    max-width: 430px; width: 100%; padding: 22px; text-align: center;
+  }
+  #modal h3 { color: var(--gold); margin: 0 0 8px; }
+  #modal .cards { justify-content: center; margin: 14px 0; }
+  #modal .pcard.pick { cursor: pointer; }
+  #modal .pcard.pick:hover { outline: 2px solid var(--gold); }
+  #modal select { width: 100%; margin: 5px 0; }
+  #modal .row { justify-content: center; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #402f16; border: 1px solid var(--gold-dim); color: #f2e5c4;
+    border-radius: 10px; padding: 10px 18px; font-size: 14px;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 60;
+    max-width: 90vw;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<div id="home" class="screen visible">
+  <h1 class="masthead">Get A Clue</h1>
+  <p class="tagline">A murder at Blackwood Manor. One of you knows more than they let on.</p>
+  <div class="card-box">
+    <h3>Your name</h3>
+    <input id="name" maxlength="20" placeholder="e.g. Sherlock">
+  </div>
+  <div class="card-box">
+    <h3>Start a new investigation</h3>
+    <button id="btn-create" class="primary" style="width:100%">Create game</button>
+  </div>
+  <div class="card-box">
+    <h3>Join a friend's game</h3>
+    <div class="row">
+      <input id="join-code" maxlength="4" placeholder="CODE" style="text-transform:uppercase; letter-spacing:0.2em">
+      <button id="btn-join" class="primary">Join</button>
+    </div>
+  </div>
+  <p class="hint" id="home-error"></p>
+</div>
+
+<!-- ============ LOBBY ============ -->
+<div id="lobby" class="screen">
+  <h1 class="masthead">Get A Clue</h1>
+  <p class="tagline">Waiting for detectives to arrive…</p>
+  <div class="card-box" style="text-align:center">
+    <h3 style="text-align:center">Game code — send this to your friend</h3>
+    <div class="code-big" id="lobby-code">····</div>
+    <p class="hint">They open this same web address and enter the code.</p>
+    <ul class="roster" id="lobby-roster"></ul>
+    <button id="btn-start" class="primary" style="width:100%">Begin the investigation</button>
+    <p class="hint" id="lobby-hint" style="margin-bottom:0"></p>
+  </div>
+</div>
+
+<!-- ============ GAME ============ -->
+<div id="game" class="screen">
+  <div id="topbar">
+    <h1 class="masthead">Get A Clue</h1>
+    <div id="status"></div>
+    <div id="codechip">code <b id="code-inline"></b></div>
+  </div>
+
+  <div id="cols">
+    <div style="display:flex; flex-direction:column; gap:14px">
+      <div class="panel">
+        <h3>Blackwood Manor</h3>
+        <div id="map"></div>
+        <div id="actions"><span id="phasehint"></span></div>
+      </div>
+
+      <div class="panel">
+        <h3>Your cards</h3>
+        <div class="cards" id="hand"></div>
+        <div id="faceup-wrap" style="display:none">
+          <h3 style="margin-top:14px">Face-up for everyone</h3>
+          <div class="cards" id="faceup"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Detectives</h3>
+        <ul id="plist"></ul>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:14px">
+      <div class="panel" id="notebook">
+        <h3>Detective's notebook</h3>
+        <p class="hint" style="margin:0 0 8px">✓ = cleared automatically. Click the column to add your own marks (✗ then ?).</p>
+        <table><tbody id="nb-body"></tbody></table>
+      </div>
+
+      <div class="panel">
+        <h3>Case log</h3>
+        <div id="log"></div>
+        <div id="chatrow">
+          <input id="chat" maxlength="300" placeholder="Say something…">
+          <button id="btn-chat">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL / TOAST ============ -->
+<div id="overlay"><div id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const CHAR_COLORS = {
+    'Madame Sapphire': 'var(--sapphire)',
+    'Colonel Custard': 'var(--custard)',
+    'Professor Pewter': 'var(--pewter)',
+    'Miss Vermilion': 'var(--vermilion)',
+    'Doctor Damson': 'var(--damson)',
+    'Captain Celadon': 'var(--celadon)',
+  };
+
+  let ws = null;
+  let state = null;
+  let session = null; // { code, token }
+  let notes = {}; // card -> 0 blank | 1 ✗ | 2 ?
+  let seen = {};  // card -> true (revealed to me privately)
+  let logAtBottom = true;
+
+  // ---------- session persistence ----------
+  function saveSession() { localStorage.setItem('gac-session', JSON.stringify(session)); }
+  function loadSession() {
+    try { return JSON.parse(localStorage.getItem('gac-session')); } catch { return null; }
+  }
+  function notesKey() { return 'gac-notes-' + session.code + '-' + session.token.slice(0, 8); }
+  function saveNotes() { localStorage.setItem(notesKey(), JSON.stringify({ notes, seen })); }
+  function loadNotes() {
+    try {
+      const d = JSON.parse(localStorage.getItem(notesKey()));
+      if (d) { notes = d.notes || {}; seen = d.seen || {}; }
+    } catch { /* fresh notebook */ }
+  }
+
+  // ---------- websocket ----------
+  function connect(onOpen) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host);
+    ws.onopen = onOpen;
+    ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+    ws.onclose = () => {
+      if (session) {
+        toast('Connection lost — reconnecting…');
+        setTimeout(() => connect(() => send({ type: 'rejoin', ...session })), 1500);
+      }
+    };
+  }
+  function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+
+  function handle(msg) {
+    if (msg.type === 'error') {
+      if (!state) { $('home-error').textContent = msg.msg; show('home'); session = null; }
+      else toast(msg.msg);
+      return;
+    }
+    if (msg.type === 'joined') {
+      session = { code: msg.code, token: msg.token };
+      saveSession();
+      loadNotes();
+      return;
+    }
+    if (msg.type === 'reveal') {
+      seen[msg.card] = true;
+      saveNotes();
+      modalReveal(msg.from, msg.card);
+      if (state) renderNotebook();
+      return;
+    }
+    if (msg.type === 'state') {
+      state = msg;
+      render();
+    }
+  }
+
+  // ---------- ui helpers ----------
+  function show(name) {
+    for (const s of document.querySelectorAll('.screen')) s.classList.remove('visible');
+    $(name).classList.add('visible');
+  }
+  let toastTimer = null;
+  function toast(text) {
+    const t = $('toast');
+    t.textContent = text;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  }
+  function closeModal() { $('overlay').classList.remove('visible'); $('modal').dataset.kind = ''; }
+  function openModal(html, kind) {
+    $('modal').innerHTML = html;
+    $('modal').dataset.kind = kind || '';
+    $('overlay').classList.add('visible');
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function initials(name) {
+    return name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  }
+  function tokenHtml(p, extra) {
+    const color = CHAR_COLORS[p.character] || 'var(--pewter)';
+    return '<span class="token' + (p.active ? '' : ' gone') + (extra || '') + '" style="background:' + color +
+      '" title="' + esc(p.name) + ' — ' + esc(p.character || '') + '">' + esc(initials(p.name)) + '</span>';
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    if (!state) return;
+    if (state.phase === 'lobby') { renderLobby(); return; }
+    show('game');
+    $('code-inline').textContent = state.code;
+    renderStatus();
+    renderMap();
+    renderActions();
+    renderHand();
+    renderPlayers();
+    renderNotebook();
+    renderLog();
+    maybePromptRefute();
+  }
+
+  function renderLobby() {
+    show('lobby');
+    $('lobby-code').textContent = state.code;
+    $('lobby-roster').innerHTML = state.players
+      .map((p, i) => '<li>🕵️ ' + esc(p.name) + (i === 0 ? ' <span class="hint">(host)</span>' : '') +
+        (p.connected ? '' : ' <span class="hint">(disconnected)</span>') + '</li>')
+      .join('');
+    const canStart = state.isHost && state.players.length >= 2;
+    $('btn-start').style.display = state.isHost ? '' : 'none';
+    $('btn-start').disabled = !canStart;
+    $('lobby-hint').textContent = state.isHost
+      ? (canStart ? '2–6 players. Start whenever you are ready.' : 'Waiting for at least one more player…')
+      : 'Waiting for the host to start the game…';
+  }
+
+  function renderStatus() {
+    const myTurn = state.turn === state.you;
+    let text;
+    if (state.phase === 'over') {
+      text = state.winner === state.you ? '🏆 You solved it!' :
+        (state.winner === null || state.winner === undefined || state.winner < 0)
+          ? 'The case went cold.'
+          : '<span class="who">' + esc(state.players[state.winner].name) + '</span> solved the case.';
+    } else if (state.phase === 'refute' && state.suggestion) {
+      const r = state.players[state.suggestion.refuter];
+      text = state.suggestion.refuter === state.you
+        ? 'You must show a card…'
+        : 'Waiting for <span class="who">' + esc(r.name) + '</span> to refute…';
+    } else if (myTurn) {
+      text = '🎲 Your turn — you rolled a ' + state.roll + '.';
+    } else {
+      text = '<span class="who">' + esc(state.turnName) + '</span> is investigating…';
+    }
+    $('status').innerHTML = text;
+  }
+
+  function renderMap() {
+    const map = $('map');
+    const passOf = {};
+    for (const [a, b] of state.passages) { passOf[a] = b; passOf[b] = a; }
+    const myTurn = state.turn === state.you && state.phase === 'move';
+    map.innerHTML = state.rooms.map((room) => {
+      const here = state.players[state.you].room === room;
+      const reach = myTurn && state.reachable.includes(room);
+      const tokens = state.players.filter((p) => p.room === room).map((p) => tokenHtml(p)).join('');
+      return '<div class="room' + (reach ? ' reach' : '') + (here ? ' here' : '') + '" data-room="' + esc(room) + '">' +
+        '<div class="rname">' + esc(room) + '</div>' +
+        (passOf[room] ? '<div class="passage" title="Secret passage to the ' + esc(passOf[room]) + '">🚪↔</div>' : '') +
+        '<div class="tokens">' + tokens + '</div></div>';
+    }).join('');
+    if (myTurn) {
+      for (const el of map.querySelectorAll('.room.reach')) {
+        el.addEventListener('click', () => send({ type: 'move', room: el.dataset.room }));
+      }
+    }
+  }
+
+  function renderActions() {
+    const bar = $('actions');
+    bar.innerHTML = '';
+    const hint = document.createElement('span');
+    hint.id = 'phasehint';
+    const btn = (label, cls, fn, disabled) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      if (cls) b.className = cls;
+      b.disabled = !!disabled;
+      b.addEventListener('click', fn);
+      bar.appendChild(b);
+      return b;
+    };
+
+    if (state.phase === 'over') {
+      const e = state.envelope;
+      hint.textContent = 'It was ' + e.suspect + ', with the ' + e.weapon + ', in the ' + e.room + '.';
+      bar.appendChild(hint);
+      if (state.isHost) btn('Play again', 'primary', () => send({ type: 'again' }));
+      return;
+    }
+
+    const myTurn = state.turn === state.you && state.players[state.you].active;
+    if (!myTurn || state.phase === 'refute') {
+      hint.textContent = state.players[state.you].active
+        ? 'Keep an eye on the case log and your notebook.'
+        : 'You are off the case, but you still show cards when asked.';
+      bar.appendChild(hint);
+      return;
+    }
+
+    if (state.phase === 'move') {
+      hint.textContent = 'Click a highlighted room to move (up to ' + state.steps + '), or stay put.';
+      bar.appendChild(hint);
+      btn('Stay in the ' + state.players[state.you].room, '', () =>
+        send({ type: 'move', room: state.players[state.you].room }));
+      btn('Make an accusation…', 'danger', modalAccuse);
+    } else if (state.phase === 'suggest') {
+      hint.textContent = 'You are in the ' + state.players[state.you].room + '. Name a suspect and weapon, or pass.';
+      bar.appendChild(hint);
+      btn('Make a suggestion…', 'primary', modalSuggest);
+      btn('Skip suggestion', '', () => send({ type: 'skipSuggest' }));
+      btn('Make an accusation…', 'danger', modalAccuse);
+    } else if (state.phase === 'end') {
+      hint.textContent = 'Suggestion resolved. Accuse only if you are sure — a wrong accusation ends your game.';
+      bar.appendChild(hint);
+      btn('End turn', 'primary', () => send({ type: 'endTurn' }));
+      btn('Make an accusation…', 'danger', modalAccuse);
+    }
+  }
+
+  function renderHand() {
+    $('hand').innerHTML = state.yourHand.map((c) => '<div class="pcard">' + esc(c) + '</div>').join('') ||
+      '<span class="hint">No cards.</span>';
+    $('faceup-wrap').style.display = state.faceUp.length ? '' : 'none';
+    $('faceup').innerHTML = state.faceUp.map((c) => '<div class="pcard small">' + esc(c) + '</div>').join('');
+  }
+
+  function renderPlayers() {
+    $('plist').innerHTML = state.players.map((p, i) => {
+      const bits = [];
+      if (!p.active) bits.push('eliminated');
+      if (!p.connected) bits.push('disconnected');
+      return '<li class="' + (i === state.turn ? 'turn' : '') + '">' + tokenHtml(p) +
+        '<span class="pname">' + esc(p.name) + (i === state.you ? ' (you)' : '') + '</span>' +
+        '<span class="dim">' + esc(p.character || '') + ' · ' + p.cardCount + ' cards' +
+        (bits.length ? ' · ' + bits.join(', ') : '') + '</span></li>';
+    }).join('');
+  }
+
+  function renderNotebook() {
+    const sections = [
+      ['Suspects', state.suspects],
+      ['Weapons', state.weapons],
+      ['Rooms', state.rooms],
+    ];
+    const marks = ['', '✗', '?'];
+    const rows = [];
+    for (const [title, items] of sections) {
+      rows.push('<tr class="section"><td colspan="2">' + title + '</td></tr>');
+      for (const item of items) {
+        const auto = state.yourHand.includes(item) ? '✓ mine'
+          : state.faceUp.includes(item) ? '✓ face-up'
+          : seen[item] ? '✓ shown' : null;
+        const cls = auto ? ' class="known"' : '';
+        const markCell = auto
+          ? '<td class="mark auto">' + auto + '</td>'
+          : '<td class="mark" data-card="' + esc(item) + '"><span class="man">' + marks[notes[item] || 0] + '</span></td>';
+        rows.push('<tr' + cls + '><td>' + esc(item) + '</td>' + markCell + '</tr>');
+      }
+    }
+    $('nb-body').innerHTML = rows.join('');
+    for (const cell of $('nb-body').querySelectorAll('td.mark:not(.auto)')) {
+      cell.addEventListener('click', () => {
+        const card = cell.dataset.card;
+        notes[card] = ((notes[card] || 0) + 1) % 3;
+        saveNotes();
+        cell.querySelector('.man').textContent = marks[notes[card]];
+      });
+    }
+  }
+
+  function renderLog() {
+    const el = $('log');
+    logAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    el.innerHTML = state.log.map((line) => {
+      const mine = line.startsWith('💬 ' + state.players[state.you].name + ':');
+      return '<p' + (mine ? ' class="mine"' : '') + '>' + esc(line) + '</p>';
+    }).join('');
+    if (logAtBottom) el.scrollTop = el.scrollHeight;
+  }
+
+  // ---------- modals ----------
+  function maybePromptRefute() {
+    const s = state.suggestion;
+    if (state.phase === 'refute' && s && s.refuter === state.you && s.matches.length) {
+      const sugName = esc(state.players[s.by].name);
+      openModal(
+        '<h3>You can refute the suggestion</h3>' +
+        '<p>' + sugName + ' suggested <b>' + esc(s.suspect) + '</b>, with the <b>' + esc(s.weapon) +
+        '</b>, in the <b>' + esc(s.room) + '</b>.</p>' +
+        '<p class="hint">Choose one card to show them privately:</p>' +
+        '<div class="cards">' + s.matches.map((c) =>
+          '<div class="pcard pick" data-card="' + esc(c) + '">' + esc(c) + '</div>').join('') + '</div>',
+        'refute'
+      );
+      for (const el of $('modal').querySelectorAll('.pick')) {
+        el.addEventListener('click', () => {
+          send({ type: 'showCard', card: el.dataset.card });
+          closeModal();
+        });
+      }
+    } else if ($('overlay').classList.contains('visible') && $('modal').dataset.kind === 'refute') {
+      closeModal();
+    }
+  }
+
+  function modalReveal(from, card) {
+    openModal(
+      '<h3>Card shown to you</h3>' +
+      '<p>' + esc(from) + ' shows you…</p>' +
+      '<div class="cards"><div class="pcard">' + esc(card) + '</div></div>' +
+      '<p class="hint">Recorded in your notebook.</p>' +
+      '<button class="primary" id="m-ok">Noted</button>'
+    );
+    $('m-ok').addEventListener('click', closeModal);
+  }
+
+  function pickerOptions(list) {
+    return list.map((x) => '<option>' + esc(x) + '</option>').join('');
+  }
+
+  function modalSuggest() {
+    openModal(
+      '<h3>Make a suggestion</h3>' +
+      '<p class="hint">In the ' + esc(state.players[state.you].room) + '. Others must show you a matching card if they can.</p>' +
+      '<select id="m-suspect">' + pickerOptions(state.suspects) + '</select>' +
+      '<select id="m-weapon">' + pickerOptions(state.weapons) + '</select>' +
+      '<div class="row"><button class="primary" id="m-go">Suggest</button><button id="m-cancel">Cancel</button></div>'
+    );
+    $('m-go').addEventListener('click', () => {
+      send({ type: 'suggest', suspect: $('m-suspect').value, weapon: $('m-weapon').value });
+      closeModal();
+    });
+    $('m-cancel').addEventListener('click', closeModal);
+  }
+
+  function modalAccuse() {
+    openModal(
+      '<h3>Make an accusation</h3>' +
+      '<p class="hint">Get it wrong and you are out of the game. Get it right and you win.</p>' +
+      '<select id="m-suspect">' + pickerOptions(state.suspects) + '</select>' +
+      '<select id="m-weapon">' + pickerOptions(state.weapons) + '</select>' +
+      '<select id="m-room">' + pickerOptions(state.rooms) + '</select>' +
+      '<div class="row"><button class="danger" id="m-go">Accuse!</button><button id="m-cancel">Cancel</button></div>'
+    );
+    $('m-go').addEventListener('click', () => {
+      send({
+        type: 'accuse',
+        suspect: $('m-suspect').value,
+        weapon: $('m-weapon').value,
+        room: $('m-room').value,
+      });
+      closeModal();
+    });
+    $('m-cancel').addEventListener('click', closeModal);
+  }
+
+  // ---------- wire up ----------
+  $('btn-create').addEventListener('click', () => {
+    const name = $('name').value.trim();
+    if (!name) { $('home-error').textContent = 'Enter your name first.'; return; }
+    localStorage.setItem('gac-name', name);
+    connect(() => send({ type: 'create', name }));
+  });
+  $('btn-join').addEventListener('click', () => {
+    const name = $('name').value.trim();
+    const code = $('join-code').value.trim().toUpperCase();
+    if (!name) { $('home-error').textContent = 'Enter your name first.'; return; }
+    if (code.length !== 4) { $('home-error').textContent = 'Game codes are 4 characters.'; return; }
+    localStorage.setItem('gac-name', name);
+    connect(() => send({ type: 'join', code, name }));
+  });
+  $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-join').click(); });
+  $('btn-start').addEventListener('click', () => send({ type: 'start' }));
+  $('btn-chat').addEventListener('click', () => {
+    const text = $('chat').value.trim();
+    if (text) { send({ type: 'chat', text }); $('chat').value = ''; }
+  });
+  $('chat').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-chat').click(); });
+
+  // Restore session on load if we were in a game.
+  $('name').value = localStorage.getItem('gac-name') || '';
+  const prev = loadSession();
+  if (prev && prev.code && prev.token) {
+    session = prev;
+    loadNotes();
+    connect(() => send({ type: 'rejoin', ...session }));
+  }
+})();
+</script>
+</body>
+</html>

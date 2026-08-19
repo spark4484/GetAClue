@@ -1,0 +1,12 @@
+{
+  "name": "getaclue",
+  "version": "1.0.0",
+  "description": "Self-hosted online whodunnit deduction game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
