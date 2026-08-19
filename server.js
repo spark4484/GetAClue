@@ -80,6 +80,9 @@ function reachableRooms(from, steps) {
 
 const games = new Map(); // code -> game
 
+// Co-op mode: the killer escapes at dawn. 16 turns * 30 minutes = one 8-hour night.
+const DAWN_TURNS = 16;
+
 function makeCode() {
   const letters = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let code;
@@ -102,10 +105,13 @@ function newGame(hostName) {
   const game = {
     code: makeCode(),
     phase: 'lobby', // lobby | move | suggest | refute | end | over
+    mode: 'coop', // 'coop' (solve it together before dawn) | 'classic' (competitive)
     players: [], // { token, name, character, hand, room, active, ws }
     hostToken: null,
     envelope: null, // { suspect, weapon, room }
     faceUp: [], // leftover cards shown to everyone
+    revealed: [], // co-op: innocent cards the manor has given up, public to all
+    clock: 0, // co-op: turns elapsed; at DAWN_TURNS the killer escapes
     turnIndex: 0,
     roll: 0,
     steps: 0,
@@ -156,23 +162,31 @@ function startGame(game) {
     room: ROOMS[crypto.randomInt(ROOMS.length)],
   };
 
-  const deck = shuffle(
-    [...SUSPECTS, ...WEAPONS, ...ROOMS].filter(
-      (c) => c !== game.envelope.suspect && c !== game.envelope.weapon && c !== game.envelope.room
-    )
-  );
-  const perPlayer = Math.floor(deck.length / game.players.length);
-  game.players.forEach((p, i) => {
-    p.hand = deck.slice(i * perPlayer, (i + 1) * perPlayer).sort();
-  });
-  game.faceUp = deck.slice(perPlayer * game.players.length).sort();
-
+  game.revealed = [];
+  game.clock = 0;
+  game.faceUp = [];
   game.turnIndex = crypto.randomInt(game.players.length);
   game.winnerSeat = null;
   game.log = [];
-  logEvent(game, `The body of the manor's owner has been found. ${game.players.length} detectives are on the case.`);
-  if (game.faceUp.length) {
-    logEvent(game, `Face-up cards for everyone: ${game.faceUp.join(', ')}.`);
+
+  if (game.mode === 'coop') {
+    // Nobody holds cards — the manor keeps all the evidence. Suggestions pry it loose.
+    logEvent(game, `The body of the manor's owner has been found. ${game.players.length} detectives have until dawn to catch the killer — together.`);
+  } else {
+    const deck = shuffle(
+      [...SUSPECTS, ...WEAPONS, ...ROOMS].filter(
+        (c) => c !== game.envelope.suspect && c !== game.envelope.weapon && c !== game.envelope.room
+      )
+    );
+    const perPlayer = Math.floor(deck.length / game.players.length);
+    game.players.forEach((p, i) => {
+      p.hand = deck.slice(i * perPlayer, (i + 1) * perPlayer).sort();
+    });
+    game.faceUp = deck.slice(perPlayer * game.players.length).sort();
+    logEvent(game, `The body of the manor's owner has been found. ${game.players.length} detectives are on the case.`);
+    if (game.faceUp.length) {
+      logEvent(game, `Face-up cards for everyone: ${game.faceUp.join(', ')}.`);
+    }
   }
   beginTurn(game);
 }
@@ -190,6 +204,16 @@ function beginTurn(game) {
 }
 
 function advanceTurn(game) {
+  if (game.mode === 'coop') {
+    game.clock++;
+    if (game.clock >= DAWN_TURNS) {
+      endGame(game, null, `🌅 Dawn breaks over Blackwood Manor and the killer slips away into the morning mist`);
+      return;
+    }
+    game.turnIndex = (game.turnIndex + 1) % game.players.length;
+    beginTurn(game);
+    return;
+  }
   const activeSeats = game.players.filter((p) => p.active).length;
   if (activeSeats === 0) {
     endGame(game, null, `Every detective accused the wrong person — the killer walks free`);
@@ -225,6 +249,10 @@ function stateFor(game, player) {
     type: 'state',
     code: game.code,
     phase: game.phase,
+    mode: game.mode,
+    clock: game.clock,
+    dawnTurns: DAWN_TURNS,
+    revealed: game.revealed,
     suspects: SUSPECTS,
     weapons: WEAPONS,
     rooms: ROOMS,
@@ -279,6 +307,26 @@ function sendError(ws, msg) {
 // ---------------------------------------------------------------------------
 // Message handling
 // ---------------------------------------------------------------------------
+
+// Co-op: the manor itself answers a suggestion by clearing one innocent card.
+function resolveHouseReveal(game) {
+  const s = game.pendingSuggestion;
+  const cards = [s.suspect, s.weapon, s.room];
+  const e = game.envelope;
+  const unrevealed = cards.filter((c) => !game.revealed.includes(c));
+  const candidates = unrevealed.filter((c) => c !== e.suspect && c !== e.weapon && c !== e.room);
+  if (!unrevealed.length) {
+    logEvent(game, `🕯️ All of that was already cleared. The manor has nothing new to say.`);
+  } else if (!candidates.length) {
+    logEvent(game, `🕯️ Not a soul in the manor can account for any of that. The trail burns hot...`);
+  } else {
+    const card = candidates[crypto.randomInt(candidates.length)];
+    game.revealed.push(card);
+    logEvent(game, `🔎 The manor gives up a secret: ${card} — innocent.`);
+  }
+  game.pendingSuggestion = null;
+  game.phase = 'end';
+}
 
 function resolveRefutation(game) {
   // Find the next player clockwise from the suggester who can refute.
@@ -375,6 +423,15 @@ function handleMessage(ws, msg) {
     return;
   }
 
+  if (type === 'mode') {
+    if (player.token !== game.hostToken) return sendError(ws, 'Only the host can change the mode.');
+    if (game.phase !== 'lobby') return sendError(ws, 'The mode is locked once the game starts.');
+    if (msg.mode !== 'coop' && msg.mode !== 'classic') return sendError(ws, 'Unknown mode.');
+    game.mode = msg.mode;
+    broadcast(game);
+    return;
+  }
+
   if (type === 'start' || type === 'again') {
     if (player.token !== game.hostToken) return sendError(ws, 'Only the host can start the game.');
     if (type === 'start' && game.phase !== 'lobby') return sendError(ws, 'Game already started.');
@@ -437,7 +494,8 @@ function handleMessage(ws, msg) {
       dragged.room = player.room;
       logEvent(game, `${dragged.name} (${msg.suspect}) was pulled into the ${player.room}.`);
     }
-    resolveRefutation(game);
+    if (game.mode === 'coop') resolveHouseReveal(game);
+    else resolveRefutation(game);
     broadcast(game);
     return;
   }
@@ -459,7 +517,12 @@ function handleMessage(ws, msg) {
     logEvent(game, `⚖️ ${player.name} ACCUSES: ${msg.suspect}, with the ${msg.weapon}, in the ${msg.room}!`);
     const e = game.envelope;
     if (msg.suspect === e.suspect && msg.weapon === e.weapon && msg.room === e.room) {
-      endGame(game, seat, `${player.name} cracked the case`);
+      endGame(game, seat, game.mode === 'coop'
+        ? `🏆 ${player.name} cracked the case — the detectives win together`
+        : `${player.name} cracked the case`);
+    } else if (game.mode === 'coop') {
+      // One shot, shared fate: a wrong accusation lets the killer escape.
+      endGame(game, null, `The accusation was wrong — the real killer slipped out in the confusion`);
     } else {
       player.active = false;
       logEvent(game, `${player.name} accused the wrong person and is off the case. They will still refute suggestions.`);

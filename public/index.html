@@ -124,18 +124,28 @@
   #map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .room {
     position: relative;
-    min-height: 92px;
-    background: var(--panel-2);
+    min-height: 108px;
+    background-color: var(--panel-2);
+    background-size: cover;
+    background-position: center;
     border: 1px solid var(--edge);
     border-radius: 10px;
     padding: 8px 9px 26px;
     font-size: 14px;
+    overflow: hidden;
   }
-  .room .rname { color: var(--ink); }
-  .room.reach { border-color: var(--gold); cursor: pointer; box-shadow: 0 0 0 1px var(--gold) inset; }
-  .room.reach:hover { background: #35294a; }
-  .room.here { border-color: var(--gold-dim); background: #2e2540; }
-  .room .passage { position: absolute; right: 7px; top: 6px; font-size: 12px; opacity: 0.8; }
+  .room::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(18,13,24,0.72) 0%, rgba(18,13,24,0.35) 45%, rgba(18,13,24,0.72) 100%);
+    pointer-events: none;
+  }
+  .room > * { position: relative; }
+  .room .rname { color: #f3ecdc; text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.6); }
+  .room.reach { border-color: var(--gold); cursor: pointer; box-shadow: 0 0 0 1px var(--gold) inset, 0 0 14px rgba(212,175,90,0.25); }
+  .room.reach:hover::before { background: linear-gradient(180deg, rgba(45,32,20,0.55), rgba(45,32,20,0.35)); }
+  .room.here { border-color: var(--gold-dim); box-shadow: 0 0 0 2px var(--gold-dim) inset; }
+  .room .passage { position: absolute; right: 7px; top: 6px; font-size: 12px; opacity: 0.9; text-shadow: 0 1px 3px #000; }
   .tokens { position: absolute; left: 7px; bottom: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
   .token {
     width: 20px; height: 20px; border-radius: 50%;
@@ -248,6 +258,15 @@
     <h3 style="text-align:center">Game code — send this to your friend</h3>
     <div class="code-big" id="lobby-code">····</div>
     <p class="hint">They open this same web address and enter the code.</p>
+    <div id="mode-pick" style="text-align:left; margin:16px 0; display:none">
+      <label style="display:block; padding:8px 10px; border:1px solid var(--edge); border-radius:8px; margin-bottom:8px; cursor:pointer">
+        <input type="radio" name="mode" value="coop"> 🤝 <b>Co-op</b> — solve it together before the killer escapes at dawn. <span class="hint">Best with 2.</span>
+      </label>
+      <label style="display:block; padding:8px 10px; border:1px solid var(--edge); border-radius:8px; cursor:pointer">
+        <input type="radio" name="mode" value="classic"> 🎩 <b>Classic</b> — every detective for themselves. <span class="hint">Best with 3–6.</span>
+      </label>
+    </div>
+    <p class="hint" id="mode-view" style="display:none"></p>
     <ul class="roster" id="lobby-roster"></ul>
     <button id="btn-start" class="primary" style="width:100%">Begin the investigation</button>
     <p class="hint" id="lobby-hint" style="margin-bottom:0"></p>
@@ -271,7 +290,7 @@
       </div>
 
       <div class="panel">
-        <h3>Your cards</h3>
+        <h3 id="hand-title">Your cards</h3>
         <div class="cards" id="hand"></div>
         <div id="faceup-wrap" style="display:none">
           <h3 style="margin-top:14px">Face-up for everyone</h3>
@@ -433,6 +452,16 @@
   function renderLobby() {
     show('lobby');
     $('lobby-code').textContent = state.code;
+    $('mode-pick').style.display = state.isHost ? '' : 'none';
+    $('mode-view').style.display = state.isHost ? 'none' : '';
+    if (state.isHost) {
+      const radio = document.querySelector('input[name="mode"][value="' + state.mode + '"]');
+      if (radio) radio.checked = true;
+    } else {
+      $('mode-view').textContent = state.mode === 'coop'
+        ? 'Mode: 🤝 Co-op — solve it together before dawn.'
+        : 'Mode: 🎩 Classic — every detective for themselves.';
+    }
     $('lobby-roster').innerHTML = state.players
       .map((p, i) => '<li>🕵️ ' + esc(p.name) + (i === 0 ? ' <span class="hint">(host)</span>' : '') +
         (p.connected ? '' : ' <span class="hint">(disconnected)</span>') + '</li>')
@@ -445,14 +474,29 @@
       : 'Waiting for the host to start the game…';
   }
 
+  function clockStr(turnsElapsed) {
+    // The night starts at 10:00 PM; each turn burns 30 minutes; dawn is 6:00 AM.
+    const mins = (22 * 60 + turnsElapsed * 30) % (24 * 60);
+    let h = Math.floor(mins / 60);
+    const m = mins % 60;
+    const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return h + ':' + String(m).padStart(2, '0') + ' ' + ap;
+  }
+
   function renderStatus() {
     const myTurn = state.turn === state.you;
+    const coop = state.mode === 'coop';
     let text;
     if (state.phase === 'over') {
-      text = state.winner === state.you ? '🏆 You solved it!' :
-        (state.winner === null || state.winner === undefined || state.winner < 0)
-          ? 'The case went cold.'
-          : '<span class="who">' + esc(state.players[state.winner].name) + '</span> solved the case.';
+      text = coop
+        ? (state.winner !== null && state.winner !== undefined
+            ? '🏆 Case cracked — you win together!'
+            : '🌅 The killer got away. The manor wins.')
+        : state.winner === state.you ? '🏆 You solved it!' :
+          (state.winner === null || state.winner === undefined || state.winner < 0)
+            ? 'The case went cold.'
+            : '<span class="who">' + esc(state.players[state.winner].name) + '</span> solved the case.';
     } else if (state.phase === 'refute' && state.suggestion) {
       const r = state.players[state.suggestion.refuter];
       text = state.suggestion.refuter === state.you
@@ -462,6 +506,11 @@
       text = '🎲 Your turn — you rolled a ' + state.roll + '.';
     } else {
       text = '<span class="who">' + esc(state.turnName) + '</span> is investigating…';
+    }
+    if (coop && state.phase !== 'over') {
+      const left = state.dawnTurns - state.clock;
+      text += ' <span class="hint">🕰️ ' + clockStr(state.clock) + ' — ' + left +
+        ' turn' + (left === 1 ? '' : 's') + ' until dawn.</span>';
     }
     $('status').innerHTML = text;
   }
@@ -475,7 +524,9 @@
       const here = state.players[state.you].room === room;
       const reach = myTurn && state.reachable.includes(room);
       const tokens = state.players.filter((p) => p.room === room).map((p) => tokenHtml(p)).join('');
-      return '<div class="room' + (reach ? ' reach' : '') + (here ? ' here' : '') + '" data-room="' + esc(room) + '">' +
+      const slug = room.toLowerCase().replace(/\s+/g, '-');
+      return '<div class="room' + (reach ? ' reach' : '') + (here ? ' here' : '') + '" data-room="' + esc(room) +
+        '" style="background-image:url(\'img/' + slug + '.jpg\')">' +
         '<div class="rname">' + esc(room) + '</div>' +
         (passOf[room] ? '<div class="passage" title="Secret passage to the ' + esc(passOf[room]) + '">🚪↔</div>' : '') +
         '<div class="tokens">' + tokens + '</div></div>';
@@ -510,11 +561,14 @@
       return;
     }
 
+    const coop = state.mode === 'coop';
     const myTurn = state.turn === state.you && state.players[state.you].active;
     if (!myTurn || state.phase === 'refute') {
-      hint.textContent = state.players[state.you].active
-        ? 'Keep an eye on the case log and your notebook.'
-        : 'You are off the case, but you still show cards when asked.';
+      hint.textContent = coop
+        ? 'Talk it over in the chat and plan the next move together.'
+        : state.players[state.you].active
+          ? 'Keep an eye on the case log and your notebook.'
+          : 'You are off the case, but you still show cards when asked.';
       bar.appendChild(hint);
       return;
     }
@@ -526,13 +580,17 @@
         send({ type: 'move', room: state.players[state.you].room }));
       btn('Make an accusation…', 'danger', modalAccuse);
     } else if (state.phase === 'suggest') {
-      hint.textContent = 'You are in the ' + state.players[state.you].room + '. Name a suspect and weapon, or pass.';
+      hint.textContent = coop
+        ? 'Search the ' + state.players[state.you].room + ': name a suspect and weapon — the manor will clear one innocent card for everyone.'
+        : 'You are in the ' + state.players[state.you].room + '. Name a suspect and weapon, or pass.';
       bar.appendChild(hint);
       btn('Make a suggestion…', 'primary', modalSuggest);
       btn('Skip suggestion', '', () => send({ type: 'skipSuggest' }));
       btn('Make an accusation…', 'danger', modalAccuse);
     } else if (state.phase === 'end') {
-      hint.textContent = 'Suggestion resolved. Accuse only if you are sure — a wrong accusation ends your game.';
+      hint.textContent = coop
+        ? 'Accuse only when you are both certain — one wrong accusation and the killer escapes.'
+        : 'Suggestion resolved. Accuse only if you are sure — a wrong accusation ends your game.';
       bar.appendChild(hint);
       btn('End turn', 'primary', () => send({ type: 'endTurn' }));
       btn('Make an accusation…', 'danger', modalAccuse);
@@ -540,6 +598,14 @@
   }
 
   function renderHand() {
+    if (state.mode === 'coop') {
+      $('hand-title').textContent = 'Cleared evidence (everyone sees this)';
+      $('hand').innerHTML = state.revealed.map((c) => '<div class="pcard small">' + esc(c) + '</div>').join('') ||
+        '<span class="hint">Nothing cleared yet — make suggestions to pry secrets out of the manor.</span>';
+      $('faceup-wrap').style.display = 'none';
+      return;
+    }
+    $('hand-title').textContent = 'Your cards';
     $('hand').innerHTML = state.yourHand.map((c) => '<div class="pcard">' + esc(c) + '</div>').join('') ||
       '<span class="hint">No cards.</span>';
     $('faceup-wrap').style.display = state.faceUp.length ? '' : 'none';
@@ -553,7 +619,8 @@
       if (!p.connected) bits.push('disconnected');
       return '<li class="' + (i === state.turn ? 'turn' : '') + '">' + tokenHtml(p) +
         '<span class="pname">' + esc(p.name) + (i === state.you ? ' (you)' : '') + '</span>' +
-        '<span class="dim">' + esc(p.character || '') + ' · ' + p.cardCount + ' cards' +
+        '<span class="dim">' + esc(p.character || '') +
+        (state.mode === 'coop' ? '' : ' · ' + p.cardCount + ' cards') +
         (bits.length ? ' · ' + bits.join(', ') : '') + '</span></li>';
     }).join('');
   }
@@ -569,7 +636,9 @@
     for (const [title, items] of sections) {
       rows.push('<tr class="section"><td colspan="2">' + title + '</td></tr>');
       for (const item of items) {
-        const auto = state.yourHand.includes(item) ? '✓ mine'
+        const auto = state.mode === 'coop'
+          ? (state.revealed.includes(item) ? '✓ cleared' : null)
+          : state.yourHand.includes(item) ? '✓ mine'
           : state.faceUp.includes(item) ? '✓ face-up'
           : seen[item] ? '✓ shown' : null;
         const cls = auto ? ' class="known"' : '';
@@ -643,7 +712,10 @@
   function modalSuggest() {
     openModal(
       '<h3>Make a suggestion</h3>' +
-      '<p class="hint">In the ' + esc(state.players[state.you].room) + '. Others must show you a matching card if they can.</p>' +
+      '<p class="hint">In the ' + esc(state.players[state.you].room) + '. ' +
+      (state.mode === 'coop'
+        ? 'The manor will clear one innocent card among the three — silence means the rest are guilty.'
+        : 'Others must show you a matching card if they can.') + '</p>' +
       '<select id="m-suspect">' + pickerOptions(state.suspects) + '</select>' +
       '<select id="m-weapon">' + pickerOptions(state.weapons) + '</select>' +
       '<div class="row"><button class="primary" id="m-go">Suggest</button><button id="m-cancel">Cancel</button></div>'
@@ -658,7 +730,9 @@
   function modalAccuse() {
     openModal(
       '<h3>Make an accusation</h3>' +
-      '<p class="hint">Get it wrong and you are out of the game. Get it right and you win.</p>' +
+      '<p class="hint">' + (state.mode === 'coop'
+        ? 'Get it right and you all win. Get it wrong and the killer escapes — game over for everyone.'
+        : 'Get it wrong and you are out of the game. Get it right and you win.') + '</p>' +
       '<select id="m-suspect">' + pickerOptions(state.suspects) + '</select>' +
       '<select id="m-weapon">' + pickerOptions(state.weapons) + '</select>' +
       '<select id="m-room">' + pickerOptions(state.rooms) + '</select>' +
@@ -693,6 +767,9 @@
   });
   $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-join').click(); });
   $('btn-start').addEventListener('click', () => send({ type: 'start' }));
+  for (const radio of document.querySelectorAll('input[name="mode"]')) {
+    radio.addEventListener('change', () => send({ type: 'mode', mode: radio.value }));
+  }
   $('btn-chat').addEventListener('click', () => {
     const text = $('chat').value.trim();
     if (text) { send({ type: 'chat', text }); $('chat').value = ''; }
